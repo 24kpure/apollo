@@ -20,15 +20,32 @@ import com.ctrip.framework.apollo.build.MockInjector;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.models.V1ConfigMap;
+import io.kubernetes.client.openapi.models.V1Node;
 import io.kubernetes.client.openapi.models.V1ObjectMeta;
+import io.kubernetes.client.openapi.models.V1Pod;
+import io.kubernetes.client.openapi.models.V1PodList;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mockito;
 
+import java.time.OffsetDateTime;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.mockito.Mockito.*;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.isNull;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 public class KubernetesManagerTest {
 
@@ -135,20 +152,37 @@ public class KubernetesManagerTest {
         // arrange
         String namespace = "default";
         String name = "testConfigMap";
+
+        V1Node node = new V1Node()
+                .metadata(
+                        new V1ObjectMeta()
+                                .creationTimestamp(OffsetDateTime.now())
+                                .labels(Collections.singletonMap("app", "app")));
+        V1PodList v1PodList = new V1PodList().addItemsItem(new V1Pod().metadata(node.getMetadata()));
+
         Map<String, String> data = new HashMap<>();
         data.put("key", "value");
         V1ConfigMap configMap = new V1ConfigMap();
         configMap.metadata(new V1ObjectMeta().name(name).namespace(namespace));
         configMap.data(data);
 
+        when(coreV1Api.readNode(null, null)).thenReturn(node);
+        when(coreV1Api.listNamespacedPod(namespace, null, null,
+                null, null, "app=app",
+                null, null, null
+                , null, null)).thenReturn(v1PodList);
         when(coreV1Api.readNamespacedConfigMap(name, namespace, null)).thenReturn(configMap);
         when(coreV1Api.replaceNamespacedConfigMap(name, namespace, configMap, null, null, null, null)).thenReturn(configMap);
 
         // act
-        Boolean success = kubernetesManager.updateConfigMap(namespace, name, data);
+        boolean success = kubernetesManager.updateConfigMap(namespace, name, data);
 
         // assert
         assertTrue(success);
+        Mockito.verify(coreV1Api, Mockito.times(1)).listNamespacedPod(namespace, null, null,
+                null, null, "app=app",
+                null, null, null
+                , null, null);
     }
 
     /**
